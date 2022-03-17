@@ -92,17 +92,21 @@ const (
 	JSON OutputFormat = "json"
 )
 
+// BeforeSendFunc describes a function called before sending out an event.
+type BeforeSendFunc func(event *sentry.Event, _ *sentry.EventHint) *sentry.Event
+
 // LogsConfig describes the configuration for the logz module.
 type LogsConfig struct {
-	SentryLevel      Level         `json:"sentryLevel" validate:"required,oneof=debug info warning error"`
-	OutputLevel      Level         `json:"outputLevel" validate:"required,oneof=debug info warning error"`
-	OutputFormat     OutputFormat  `json:"format" validate:"required,oneof=text json"`
-	SentryDSN        string        `json:"sentryDsn"`
-	SentrySampleRate float64       `json:"sampleRate" validate:"required"`
-	ReleaseTimeout   time.Duration `json:"releaseTimeout"`
-	Environment      string        `json:"environment"`
-	Release          string        `json:"release"`
-	ServerName       string        `json:"serverName"`
+	SentryLevel      Level          `json:"sentryLevel" validate:"required,oneof=debug info warning error"`
+	OutputLevel      Level          `json:"outputLevel" validate:"required,oneof=debug info warning error"`
+	OutputFormat     OutputFormat   `json:"format" validate:"required,oneof=text json"`
+	SentryDSN        string         `json:"sentryDsn"`
+	SentrySampleRate float64        `json:"sampleRate" validate:"required"`
+	ReleaseTimeout   time.Duration  `json:"releaseTimeout"`
+	Environment      string         `json:"environment"`
+	Release          string         `json:"release"`
+	ServerName       string         `json:"serverName"`
+	BeforeSend       BeforeSendFunc `json:"-"`
 }
 
 // NewConfigSingletonInjector always inject the given LogsConfig.
@@ -265,7 +269,11 @@ func Initializer(ctx context.Context) (injectz.Injector, injectz.Releaser) {
 		ServerName:       cfg.ServerName,
 		Release:          cfg.Release,
 		Environment:      cfg.Environment,
-		BeforeSend: func(event *sentry.Event, _ *sentry.EventHint) *sentry.Event {
+		BeforeSend: func(event *sentry.Event, eventHint *sentry.EventHint) *sentry.Event {
+			if cfg.BeforeSend != nil {
+				event = cfg.BeforeSend(event, eventHint)
+			}
+
 			logrusEntry := logrusLogger.
 				WithTime(event.Timestamp).
 				WithFields(event.Extra)

@@ -4,7 +4,7 @@ package logz
 type User struct {
 	ID       string
 	Email    string
-	Metadata map[string]interface{}
+	Metadata Metadata
 }
 
 // UserExtractor describes the ability to provide a user for logs purposes.
