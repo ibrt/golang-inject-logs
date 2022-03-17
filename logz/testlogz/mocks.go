@@ -6,11 +6,11 @@ package testlogz
 
 import (
 	context "context"
-	logz "golang-inject-logs/logz"
 	http "net/http"
 	reflect "reflect"
 
 	gomock "github.com/golang/mock/gomock"
+	logz "github.com/ibrt/golang-inject-logs/logz"
 )
 
 // MockLogs is a mock of Logs interface.

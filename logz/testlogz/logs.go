@@ -9,7 +9,7 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/ibrt/golang-fixtures/fixturez"
 
-	"golang-inject-logs/logz"
+	"github.com/ibrt/golang-inject-logs/logz"
 )
 
 var (

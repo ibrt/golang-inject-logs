@@ -1,4 +1,4 @@
-module golang-inject-logs
+module github.com/ibrt/golang-inject-logs
 
 go 1.17
 

@@ -9,7 +9,7 @@ import (
 	"github.com/ibrt/golang-fixtures/fixturez"
 	"github.com/stretchr/testify/require"
 
-	"golang-inject-logs/logz"
+	"github.com/ibrt/golang-inject-logs/logz"
 )
 
 func TestModule_Debug(t *testing.T) {

@@ -8,8 +8,8 @@ import (
 	"github.com/ibrt/golang-fixtures/fixturez"
 	"github.com/stretchr/testify/require"
 
-	"golang-inject-logs/logz"
-	"golang-inject-logs/logz/testlogz"
+	"github.com/ibrt/golang-inject-logs/logz"
+	"github.com/ibrt/golang-inject-logs/logz/testlogz"
 )
 
 func TestHelpers(t *testing.T) {
