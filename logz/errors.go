@@ -21,7 +21,7 @@ func errorToSentryEvent(err error, level Level) *sentry.Event {
 	event.Level = level.toSentry()
 
 	if status := errorz.GetStatus(err); status != 0 {
-		event.Extra[statusKey] = status
+		event.Extra[statusKey] = status.Int()
 	}
 
 	for k, v := range errorz.GetMetadata(err) {
@@ -29,21 +29,27 @@ func errorToSentryEvent(err error, level Level) *sentry.Event {
 	}
 
 	for i := 0; i < maxErrorDepth && err != nil; i++ {
+		uErr := errorz.Unwrap(err)
+		uType := reflect.TypeOf(uErr).String()
+
 		event.Exception = append(event.Exception, sentry.Exception{
 			Type: func() string {
 				if id := errorz.GetID(err); id != "" {
 					return id.String()
 				}
-				return reflect.TypeOf(err).String()
+				return uType
 			}(),
 			Value:      err.Error(),
 			Stacktrace: extractSentryStacktrace(err),
 		})
 
-		err = errorz.Unwrap(err)
+		err = uErr
 
-		// TODO(ibrt): Skip common errors.
-		event.Extra[fmt.Sprintf(unwrappedKey, i, reflect.TypeOf(err).String())] = err
+		switch uType {
+		case "*errors.errorString":
+		default:
+			event.Extra[fmt.Sprintf(unwrappedKey, i, reflect.TypeOf(err).String())] = err
+		}
 
 		switch pErr := err.(type) {
 		case interface{ Unwrap() error }:

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/getsentry/sentry-go"
+	"github.com/go-playground/validator/v10"
 	"github.com/ibrt/golang-errors/errorz"
 	"github.com/ibrt/golang-inject/injectz"
 	"github.com/sirupsen/logrus"
@@ -20,7 +21,10 @@ const (
 )
 
 var (
-	_ Logs = &logsImpl{}
+	_ Logs        = &logsImpl{}
+	_ ContextLogs = &contextLogsImpl{}
+
+	validate = validator.New()
 )
 
 // Level describes a logs level.
@@ -136,16 +140,16 @@ func (l *logsImpl) Info(ctx context.Context, skipCallers int, format string, opt
 		newEntry(Info, skipCallers+1, format, options...).toSentryEvent())
 }
 
-// Error logs an error.
-func (l *logsImpl) Error(ctx context.Context, err error) {
-	sentry.GetHubFromContext(ctx).CaptureEvent(
-		errorToSentryEvent(errorz.Wrap(err, errorz.Skip()), Error))
-}
-
 // Warning logs a warning.
 func (l *logsImpl) Warning(ctx context.Context, err error) {
 	sentry.GetHubFromContext(ctx).CaptureEvent(
 		errorToSentryEvent(errorz.Wrap(err, errorz.Skip()), Warning))
+}
+
+// Error logs an error.
+func (l *logsImpl) Error(ctx context.Context, err error) {
+	sentry.GetHubFromContext(ctx).CaptureEvent(
+		errorToSentryEvent(errorz.Wrap(err, errorz.Skip()), Error))
 }
 
 // TraceHTTPRequestServer starts tracing an inbound HTTP request.
@@ -239,7 +243,7 @@ func (l *contextLogsImpl) AddMetadata(k string, v interface{}) {
 // It is possible to inject a different Logs implementation using NewSingletonInjector and a custom Initializer.
 func Initializer(ctx context.Context) (injectz.Injector, injectz.Releaser) {
 	cfg := ctx.Value(logsConfigContextKey).(*LogsConfig)
-	// checkz.MustValidateStruct(cfg) TODO(ibrt): Validation.
+	errorz.MaybeMustWrap(validate.Struct(cfg))
 
 	logrusLogger := logrus.New()
 	logrusLogger.SetLevel(cfg.OutputLevel.toLogrus())
@@ -256,6 +260,7 @@ func Initializer(ctx context.Context) (injectz.Injector, injectz.Releaser) {
 
 	client, err := sentry.NewClient(sentry.ClientOptions{
 		Dsn:              cfg.SentryDSN,
+		SampleRate:       cfg.SentrySampleRate,
 		TracesSampleRate: cfg.SentrySampleRate,
 		ServerName:       cfg.ServerName,
 		Release:          cfg.Release,
