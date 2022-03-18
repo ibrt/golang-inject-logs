@@ -206,7 +206,7 @@ func TestModule_Text(t *testing.T) {
 	c := fixturez.CaptureOutput()
 	defer c.Close()
 
-	cfg := &logz.LogsConfig{
+	cfg := &logz.Config{
 		SentryLevel:      logz.Debug,
 		OutputLevel:      logz.Debug,
 		OutputFormat:     logz.Text,
@@ -238,8 +238,8 @@ func TestGetters(t *testing.T) {
 	require.Panics(t, func() {
 		logz.Initializer(context.Background())
 	})
-	require.PanicsWithError(t, "Key: 'LogsConfig.SentryLevel' Error:Field validation for 'SentryLevel' failed on the 'required' tag\nKey: 'LogsConfig.OutputLevel' Error:Field validation for 'OutputLevel' failed on the 'required' tag\nKey: 'LogsConfig.OutputFormat' Error:Field validation for 'OutputFormat' failed on the 'required' tag\nKey: 'LogsConfig.SentrySampleRate' Error:Field validation for 'SentrySampleRate' failed on the 'required' tag", func() {
-		ctx := logz.NewConfigSingletonInjector(&logz.LogsConfig{})(context.Background())
+	require.PanicsWithError(t, "Key: 'Config.SentryLevel' Error:Field validation for 'SentryLevel' failed on the 'required' tag\nKey: 'Config.OutputLevel' Error:Field validation for 'OutputLevel' failed on the 'required' tag\nKey: 'Config.OutputFormat' Error:Field validation for 'OutputFormat' failed on the 'required' tag\nKey: 'Config.SentrySampleRate' Error:Field validation for 'SentrySampleRate' failed on the 'required' tag", func() {
+		ctx := logz.NewConfigSingletonInjector(&logz.Config{})(context.Background())
 		logz.Initializer(ctx)
 	})
 	fixturez.RequireNotPanics(t, func() {
@@ -248,7 +248,7 @@ func TestGetters(t *testing.T) {
 }
 
 func getCfg(beforeSendFunc logz.BeforeSendFunc) context.Context {
-	cfg := &logz.LogsConfig{
+	cfg := &logz.Config{
 		SentryLevel:      logz.Debug,
 		OutputLevel:      logz.Debug,
 		OutputFormat:     logz.JSON,

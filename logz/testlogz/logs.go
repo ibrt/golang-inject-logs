@@ -1,4 +1,4 @@
-//go:generate go run github.com/golang/mock/mockgen@v1.6.0 -source ../logs.go -destination ./mocks.go -package testlogz
+//go:generate go run github.com/golang/mock/mockgen@v1.6.0 -source ../logs.go -destination ./mocklogz/mocks.go -package mocklogz
 
 package testlogz
 
@@ -10,6 +10,7 @@ import (
 	"github.com/ibrt/golang-fixtures/fixturez"
 
 	"github.com/ibrt/golang-inject-logs/logz"
+	"github.com/ibrt/golang-inject-logs/logz/testlogz/mocklogz"
 )
 
 var (
@@ -19,14 +20,14 @@ var (
 	_ fixturez.AfterTest   = &MockHelper{}
 )
 
-// Helper provides a test helper for logz using a real logger.
+// Helper is a test helper for Logs.
 type Helper struct {
 	releaser func()
 }
 
 // BeforeSuite implements fixturez.BeforeSuite.
 func (f *Helper) BeforeSuite(ctx context.Context, _ *testing.T) context.Context {
-	cfg := &logz.LogsConfig{
+	cfg := &logz.Config{
 		SentryLevel:      logz.Debug,
 		OutputLevel:      logz.Debug,
 		OutputFormat:     logz.Text,
@@ -50,16 +51,16 @@ func (f *Helper) AfterSuite(_ context.Context, _ *testing.T) {
 	f.releaser = nil
 }
 
-// MockHelper provides a test helper for logz using a mock logger.
+// MockHelper is a test helper for Logs.
 type MockHelper struct {
-	Mock *MockLogs
+	Mock *mocklogz.MockLogs
 	ctrl *gomock.Controller
 }
 
 // BeforeTest implements fixtures.BeforeTest.
 func (f *MockHelper) BeforeTest(ctx context.Context, t *testing.T) context.Context {
 	f.ctrl = gomock.NewController(t)
-	f.Mock = NewMockLogs(f.ctrl)
+	f.Mock = mocklogz.NewMockLogs(f.ctrl)
 	return logz.NewSingletonInjector(f.Mock)(ctx)
 }
 

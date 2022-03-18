@@ -27,7 +27,7 @@ var (
 	validate = validator.New()
 )
 
-// Level describes a logs level.
+// Level describes a level.
 type Level string
 
 func (l Level) toLogrus() logrus.Level {
@@ -95,8 +95,8 @@ const (
 // BeforeSendFunc describes a function called before sending out an event.
 type BeforeSendFunc func(event *sentry.Event, _ *sentry.EventHint) *sentry.Event
 
-// LogsConfig describes the configuration for the logz module.
-type LogsConfig struct {
+// Config describes the configuration for Logs.
+type Config struct {
 	SentryLevel      Level          `json:"sentryLevel" validate:"required,oneof=debug info warning error"`
 	OutputLevel      Level          `json:"outputLevel" validate:"required,oneof=debug info warning error"`
 	OutputFormat     OutputFormat   `json:"format" validate:"required,oneof=text json"`
@@ -109,8 +109,8 @@ type LogsConfig struct {
 	BeforeSend       BeforeSendFunc `json:"-"`
 }
 
-// NewConfigSingletonInjector always inject the given LogsConfig.
-func NewConfigSingletonInjector(cfg *LogsConfig) injectz.Injector {
+// NewConfigSingletonInjector always inject the given *Config.
+func NewConfigSingletonInjector(cfg *Config) injectz.Injector {
 	return func(ctx context.Context) context.Context {
 		return context.WithValue(ctx, logsConfigContextKey, cfg)
 	}
@@ -243,10 +243,9 @@ func (l *contextLogsImpl) AddMetadata(k string, v interface{}) {
 	l.logs.AddMetadata(l.ctx, k, v)
 }
 
-// Initializer is a Logs initializer which provides a default implementation using Sentry.
-// It is possible to inject a different Logs implementation using NewSingletonInjector and a custom Initializer.
+// Initializer is a Logs initializer which provides a default implementation using Logrus and Sentry.
 func Initializer(ctx context.Context) (injectz.Injector, injectz.Releaser) {
-	cfg := ctx.Value(logsConfigContextKey).(*LogsConfig)
+	cfg := ctx.Value(logsConfigContextKey).(*Config)
 	errorz.MaybeMustWrap(validate.Struct(cfg))
 
 	logrusLogger := logrus.New()
@@ -314,7 +313,7 @@ func NewSingletonInjector(l Logs) injectz.Injector {
 	}
 }
 
-// Get extracts the Logs from context and wraps it as ContextLogs. Panics if not found.
+// Get extracts the Logs from context and wraps it as ContextLogs, panics if not found.
 func Get(ctx context.Context) ContextLogs {
 	return &contextLogsImpl{
 		ctx:  ctx,
