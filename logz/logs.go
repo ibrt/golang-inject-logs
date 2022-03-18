@@ -41,7 +41,7 @@ func (l Level) toLogrus() logrus.Level {
 	case Error:
 		return logrus.ErrorLevel
 	default:
-		panic(errorz.Errorf("unknown level: %v", errorz.A(l)))
+		panic(errorz.Errorf("unknown level: %v", errorz.A(l), errorz.Skip()))
 	}
 }
 
@@ -56,7 +56,7 @@ func (l Level) toSentry() sentry.Level {
 	case Error:
 		return sentry.LevelError
 	default:
-		panic(errorz.Errorf("unknown level: %v", errorz.A(l)))
+		panic(errorz.Errorf("unknown level: %v", errorz.A(l), errorz.Skip()))
 	}
 }
 
@@ -71,7 +71,7 @@ func levelFromSentry(l sentry.Level) Level {
 	case sentry.LevelDebug:
 		return Debug
 	default:
-		panic(errorz.Errorf("unknown level: %v", errorz.A(l)))
+		panic(errorz.Errorf("unknown level: %v", errorz.A(l), errorz.Skip()))
 	}
 }
 
@@ -246,7 +246,7 @@ func (l *contextLogsImpl) AddMetadata(k string, v interface{}) {
 // Initializer is a Logs initializer which provides a default implementation using Logrus and Sentry.
 func Initializer(ctx context.Context) (injectz.Injector, injectz.Releaser) {
 	cfg := ctx.Value(logsConfigContextKey).(*Config)
-	errorz.MaybeMustWrap(validate.Struct(cfg))
+	errorz.MaybeMustWrap(validate.Struct(cfg), errorz.Skip())
 
 	logrusLogger := logrus.New()
 	logrusLogger.SetLevel(cfg.OutputLevel.toLogrus())
@@ -290,7 +290,7 @@ func Initializer(ctx context.Context) (injectz.Injector, injectz.Releaser) {
 			return event
 		},
 	})
-	errorz.MaybeMustWrap(err)
+	errorz.MaybeMustWrap(err, errorz.Skip())
 	sentryHub := sentry.NewHub(client, sentry.NewScope())
 
 	return injectz.NewInjectors(
