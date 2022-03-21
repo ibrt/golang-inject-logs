@@ -28,15 +28,16 @@ type Helper struct {
 // BeforeSuite implements fixturez.BeforeSuite.
 func (f *Helper) BeforeSuite(ctx context.Context, _ *testing.T) context.Context {
 	cfg := &logz.Config{
-		SentryLevel:      logz.Debug,
-		OutputLevel:      logz.Debug,
-		OutputFormat:     logz.Text,
-		SentryDSN:        "",
-		SentrySampleRate: 1,
-		ReleaseTimeout:   1,
-		Environment:      "test",
-		Release:          "test",
-		ServerName:       "test",
+		SentryLevel:            logz.Debug,
+		OutputLevel:            logz.Debug,
+		OutputFormat:           logz.Text,
+		SentryDSN:              "",
+		SentrySampleRate:       1,
+		SentryTracesSampleRate: 1,
+		ReleaseTimeout:         1,
+		Environment:            "test",
+		Release:                "test",
+		ServerName:             "test",
 	}
 
 	ctx = logz.NewConfigSingletonInjector(cfg)(ctx)

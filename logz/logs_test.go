@@ -207,15 +207,16 @@ func TestModule_Text(t *testing.T) {
 	defer c.Close()
 
 	cfg := &logz.Config{
-		SentryLevel:      logz.Debug,
-		OutputLevel:      logz.Debug,
-		OutputFormat:     logz.Text,
-		SentryDSN:        "",
-		SentrySampleRate: 1,
-		ReleaseTimeout:   1,
-		Environment:      "environment",
-		Release:          "release",
-		ServerName:       "serverName",
+		SentryLevel:            logz.Debug,
+		OutputLevel:            logz.Debug,
+		OutputFormat:           logz.Text,
+		SentryDSN:              "",
+		SentrySampleRate:       1,
+		SentryTracesSampleRate: 1,
+		ReleaseTimeout:         1,
+		Environment:            "environment",
+		Release:                "release",
+		ServerName:             "serverName",
 	}
 
 	ctx := logz.NewConfigSingletonInjector(cfg)(context.Background())
@@ -238,7 +239,7 @@ func TestGetters(t *testing.T) {
 	require.Panics(t, func() {
 		logz.Initializer(context.Background())
 	})
-	require.PanicsWithError(t, "Key: 'Config.SentryLevel' Error:Field validation for 'SentryLevel' failed on the 'required' tag\nKey: 'Config.OutputLevel' Error:Field validation for 'OutputLevel' failed on the 'required' tag\nKey: 'Config.OutputFormat' Error:Field validation for 'OutputFormat' failed on the 'required' tag\nKey: 'Config.SentrySampleRate' Error:Field validation for 'SentrySampleRate' failed on the 'required' tag", func() {
+	fixturez.RequirePanicsWith(t, "Key: 'Config.SentryLevel' Error:Field validation for 'SentryLevel' failed on the 'required' tag\nKey: 'Config.OutputLevel' Error:Field validation for 'OutputLevel' failed on the 'required' tag\nKey: 'Config.OutputFormat' Error:Field validation for 'OutputFormat' failed on the 'required' tag\nKey: 'Config.SentrySampleRate' Error:Field validation for 'SentrySampleRate' failed on the 'required' tag\nKey: 'Config.SentryTracesSampleRate' Error:Field validation for 'SentryTracesSampleRate' failed on the 'required' tag", func() {
 		ctx := logz.NewConfigSingletonInjector(&logz.Config{})(context.Background())
 		logz.Initializer(ctx)
 	})
@@ -249,16 +250,17 @@ func TestGetters(t *testing.T) {
 
 func getCfg(beforeSendFunc logz.BeforeSendFunc) context.Context {
 	cfg := &logz.Config{
-		SentryLevel:      logz.Debug,
-		OutputLevel:      logz.Debug,
-		OutputFormat:     logz.JSON,
-		SentryDSN:        "",
-		SentrySampleRate: 1,
-		ReleaseTimeout:   1,
-		Environment:      "environment",
-		Release:          "release",
-		ServerName:       "serverName",
-		BeforeSend:       beforeSendFunc,
+		SentryLevel:            logz.Debug,
+		OutputLevel:            logz.Debug,
+		OutputFormat:           logz.JSON,
+		SentryDSN:              "",
+		SentrySampleRate:       1,
+		SentryTracesSampleRate: 1,
+		ReleaseTimeout:         1,
+		Environment:            "environment",
+		Release:                "release",
+		ServerName:             "serverName",
+		BeforeSend:             beforeSendFunc,
 	}
 
 	return logz.NewConfigSingletonInjector(cfg)(context.Background())

@@ -18,6 +18,7 @@ type contextKey int
 const (
 	logsConfigContextKey contextKey = iota
 	logsContextKey
+	logsSpanContextKey
 )
 
 var (
@@ -97,16 +98,17 @@ type BeforeSendFunc func(event *sentry.Event, _ *sentry.EventHint) *sentry.Event
 
 // Config describes the configuration for Logs.
 type Config struct {
-	SentryLevel      Level          `json:"sentryLevel" validate:"required,oneof=debug info warning error"`
-	OutputLevel      Level          `json:"outputLevel" validate:"required,oneof=debug info warning error"`
-	OutputFormat     OutputFormat   `json:"format" validate:"required,oneof=text json"`
-	SentryDSN        string         `json:"sentryDsn"`
-	SentrySampleRate float64        `json:"sampleRate" validate:"required"`
-	ReleaseTimeout   time.Duration  `json:"releaseTimeout"`
-	Environment      string         `json:"environment"`
-	Release          string         `json:"release"`
-	ServerName       string         `json:"serverName"`
-	BeforeSend       BeforeSendFunc `json:"-"`
+	SentryLevel            Level          `json:"sentryLevel" validate:"required,oneof=debug info warning error"`
+	OutputLevel            Level          `json:"outputLevel" validate:"required,oneof=debug info warning error"`
+	OutputFormat           OutputFormat   `json:"format" validate:"required,oneof=text json"`
+	SentryDSN              string         `json:"sentryDsn"`
+	SentrySampleRate       float64        `json:"sentrySampleRate" validate:"required"`
+	SentryTracesSampleRate float64        `json:"sentryTracesSampleRate" validate:"required"`
+	ReleaseTimeout         time.Duration  `json:"releaseTimeout"`
+	Environment            string         `json:"environment"`
+	Release                string         `json:"release"`
+	ServerName             string         `json:"serverName"`
+	BeforeSend             BeforeSendFunc `json:"-"`
 }
 
 // NewConfigSingletonInjector always inject the given *Config.
@@ -123,6 +125,7 @@ type Logs interface {
 	Warning(ctx context.Context, err error)
 	Error(ctx context.Context, err error)
 	TraceHTTPRequestServer(ctx context.Context, req *http.Request, reqBody []byte) (context.Context, func())
+	TraceSpan(ctx context.Context, op, desc string) (context.Context, func())
 	SetUser(ctx context.Context, user *User)
 	AddMetadata(ctx context.Context, k string, v interface{})
 }
@@ -164,15 +167,26 @@ func (l *logsImpl) TraceHTTPRequestServer(ctx context.Context, req *http.Request
 	span := sentry.StartSpan(ctx, "http.server",
 		sentry.TransactionName(fmt.Sprintf("%s %s", req.Method, req.URL.Path)),
 		sentry.ContinueFromRequest(req))
+	ctx = span.Context()
 
 	sentryHub.Scope().SetRequest(req)
 	if len(reqBody) > 0 {
 		sentryHub.Scope().SetRequestBody(reqBody)
 	}
 
-	return ctx, func() {
-		span.Finish()
-	}
+	return ctx, span.Finish
+}
+
+// TraceSpan starts tracing a span, for example an outgoing HTTP request or database query.
+func (l *logsImpl) TraceSpan(ctx context.Context, op, desc string) (context.Context, func()) {
+	span := sentry.StartSpan(ctx, op)
+	span.Data = make(map[string]interface{})
+	span.Description = desc
+
+	ctx = span.Context()
+	ctx = context.WithValue(ctx, logsSpanContextKey, span)
+
+	return ctx, span.Finish
 }
 
 // SetUser sets the user in the current scope.
@@ -189,6 +203,11 @@ func (l *logsImpl) SetUser(ctx context.Context, user *User) {
 
 // AddMetadata adds the given metadata to the current scope.
 func (l *logsImpl) AddMetadata(ctx context.Context, k string, v interface{}) {
+	if span, ok := ctx.Value(logsSpanContextKey).(*sentry.Span); ok {
+		span.Data[k] = v
+		return
+	}
+
 	sentry.GetHubFromContext(ctx).Scope().SetExtra(k, v)
 }
 
@@ -199,6 +218,7 @@ type ContextLogs interface {
 	Warning(err error)
 	Error(err error)
 	TraceHTTPRequestServer(req *http.Request, reqBody []byte) (context.Context, func())
+	TraceSpan(op, desc string) (context.Context, func())
 	SetUser(user *User)
 	AddMetadata(k string, v interface{})
 }
@@ -233,6 +253,11 @@ func (l *contextLogsImpl) TraceHTTPRequestServer(req *http.Request, reqBody []by
 	return l.logs.TraceHTTPRequestServer(l.ctx, req, reqBody)
 }
 
+// TraceSpan starts tracing a span, for example an outgoing HTTP request or database query.
+func (l *contextLogsImpl) TraceSpan(op, desc string) (context.Context, func()) {
+	return l.logs.TraceSpan(l.ctx, op, desc)
+}
+
 // SetUser sets the user in the current scope.
 func (l *contextLogsImpl) SetUser(user *User) {
 	l.logs.SetUser(l.ctx, user)
@@ -264,7 +289,7 @@ func Initializer(ctx context.Context) (injectz.Injector, injectz.Releaser) {
 	client, err := sentry.NewClient(sentry.ClientOptions{
 		Dsn:              cfg.SentryDSN,
 		SampleRate:       cfg.SentrySampleRate,
-		TracesSampleRate: cfg.SentrySampleRate,
+		TracesSampleRate: cfg.SentryTracesSampleRate,
 		ServerName:       cfg.ServerName,
 		Release:          cfg.Release,
 		Environment:      cfg.Environment,

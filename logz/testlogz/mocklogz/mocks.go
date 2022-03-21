@@ -121,6 +121,21 @@ func (mr *MockLogsMockRecorder) TraceHTTPRequestServer(ctx, req, reqBody interfa
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TraceHTTPRequestServer", reflect.TypeOf((*MockLogs)(nil).TraceHTTPRequestServer), ctx, req, reqBody)
 }
 
+// TraceSpan mocks base method.
+func (m *MockLogs) TraceSpan(ctx context.Context, op, desc string) (context.Context, func()) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "TraceSpan", ctx, op, desc)
+	ret0, _ := ret[0].(context.Context)
+	ret1, _ := ret[1].(func())
+	return ret0, ret1
+}
+
+// TraceSpan indicates an expected call of TraceSpan.
+func (mr *MockLogsMockRecorder) TraceSpan(ctx, op, desc interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TraceSpan", reflect.TypeOf((*MockLogs)(nil).TraceSpan), ctx, op, desc)
+}
+
 // Warning mocks base method.
 func (m *MockLogs) Warning(ctx context.Context, err error) {
 	m.ctrl.T.Helper()
@@ -239,6 +254,21 @@ func (m *MockContextLogs) TraceHTTPRequestServer(req *http.Request, reqBody []by
 func (mr *MockContextLogsMockRecorder) TraceHTTPRequestServer(req, reqBody interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TraceHTTPRequestServer", reflect.TypeOf((*MockContextLogs)(nil).TraceHTTPRequestServer), req, reqBody)
+}
+
+// TraceSpan mocks base method.
+func (m *MockContextLogs) TraceSpan(op, desc string) (context.Context, func()) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "TraceSpan", op, desc)
+	ret0, _ := ret[0].(context.Context)
+	ret1, _ := ret[1].(func())
+	return ret0, ret1
+}
+
+// TraceSpan indicates an expected call of TraceSpan.
+func (mr *MockContextLogsMockRecorder) TraceSpan(op, desc interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TraceSpan", reflect.TypeOf((*MockContextLogs)(nil).TraceSpan), op, desc)
 }
 
 // Warning mocks base method.
