@@ -148,7 +148,7 @@ func TestModule_Error(t *testing.T) {
 	require.Equal(t, "TestModule_Error", recEvent.Exception[0].Stacktrace.Frames[len(recEvent.Exception[0].Stacktrace.Frames)-1].Function)
 }
 
-func TestModule_TraceHTTPRequestServer(t *testing.T) {
+func TestModule_Tracing(t *testing.T) {
 	c := fixturez.CaptureOutput()
 	defer c.Close()
 
@@ -161,26 +161,27 @@ func TestModule_TraceHTTPRequestServer(t *testing.T) {
 
 	injector, releaser := logz.Initializer(ctx)
 	defer releaser()
-
-	logs := logz.Get(injector(ctx))
-	require.NotNil(t, logs)
+	ctx = injector(ctx)
 
 	testReq := httptest.NewRequest("GET", "/path", nil)
-	ctx, release := logs.TraceHTTPRequestServer(testReq, []byte(`body`))
-	defer release()
+	ctx, releaseTransaction := logz.Get(ctx).TraceHTTPRequestServer(testReq, []byte(`body`))
 
-	logs = logz.Get(ctx)
-	require.NotNil(t, logs)
-
-	logs.SetUser(&logz.User{
+	logz.MaybeGet(ctx).SetUser(&logz.User{
 		ID: "some-user-id",
 		Metadata: logz.Metadata{
 			"ku": "vu",
 		},
 	})
 
-	logs.AddMetadata("k2", "v2")
-	logs.Error(errorz.Errorf("message: %v", errorz.A("value"), errorz.M("k1", "v1")))
+	logz.Get(ctx).AddMetadata("k2", "v2")
+
+	ctx, releaseSpan := logz.Get(ctx).TraceSpan("test", "Test Span.")
+
+	logz.Get(ctx).AddMetadata("sk1", "sv1")
+	logz.Get(ctx).Error(errorz.Errorf("message: %v", errorz.A("value"), errorz.M("k1", "v1")))
+
+	releaseSpan()
+	releaseTransaction()
 
 	v := make(map[string]interface{})
 	fixturez.RequireNoError(t, json.Unmarshal(c.GetErr(), &v))
@@ -199,7 +200,7 @@ func TestModule_TraceHTTPRequestServer(t *testing.T) {
 	require.Len(t, recEvent.Exception, 1)
 	require.Equal(t, "*errors.errorString", recEvent.Exception[0].Type)
 	require.Equal(t, "message: value", recEvent.Exception[0].Value)
-	require.Equal(t, "TestModule_TraceHTTPRequestServer", recEvent.Exception[0].Stacktrace.Frames[len(recEvent.Exception[0].Stacktrace.Frames)-1].Function)
+	require.Equal(t, "TestModule_Tracing", recEvent.Exception[0].Stacktrace.Frames[len(recEvent.Exception[0].Stacktrace.Frames)-1].Function)
 }
 
 func TestModule_Text(t *testing.T) {
