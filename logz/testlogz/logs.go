@@ -35,9 +35,9 @@ func (f *Helper) BeforeSuite(ctx context.Context, _ *testing.T) context.Context 
 		SentrySampleRate:       1,
 		SentryTracesSampleRate: 1,
 		ReleaseTimeoutSeconds:  5,
-		Environment:            "test",
-		Release:                "test",
-		ServerName:             "test",
+		Environment:            "testEnv",
+		Release:                "testRelease",
+		ServerName:             "testServer",
 	}
 
 	ctx = logz.NewConfigSingletonInjector(cfg)(ctx)

@@ -60,9 +60,6 @@ func setupLogs(ctx context.Context) (context.Context, func(), *testTransport) {
 		Release:                "release",
 		ServerName:             "serverName",
 		SentryTransport:        transport,
-		BeforeSend: func(event *sentry.Event, _ *sentry.EventHint) *sentry.Event {
-			return event
-		},
 	}
 
 	ctx = logz.NewConfigSingletonInjector(cfg)(ctx)

@@ -55,7 +55,6 @@ type Config struct {
 	Environment            string           `json:"environment"`
 	Release                string           `json:"release"`
 	ServerName             string           `json:"serverName"`
-	BeforeSend             BeforeSendFunc   `json:"-"`
 }
 
 // Validate implements the vz.Validator interface.
