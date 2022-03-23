@@ -7,9 +7,10 @@ import (
 	"time"
 
 	"github.com/getsentry/sentry-go"
-	"github.com/go-playground/validator/v10"
 	"github.com/ibrt/golang-errors/errorz"
+	"github.com/ibrt/golang-inject-clock/clockz"
 	"github.com/ibrt/golang-inject/injectz"
+	"github.com/ibrt/golang-validation/vz"
 	"github.com/sirupsen/logrus"
 )
 
@@ -23,65 +24,10 @@ const (
 
 var (
 	_ Logs        = &logsImpl{}
+	_ Logs        = &noopLogsImpl{}
 	_ ContextLogs = &contextLogsImpl{}
 
-	validate = validator.New()
-)
-
-// Level describes a level.
-type Level string
-
-func (l Level) toLogrus() logrus.Level {
-	switch l {
-	case Debug:
-		return logrus.DebugLevel
-	case Info:
-		return logrus.InfoLevel
-	case Warning:
-		return logrus.WarnLevel
-	case Error:
-		return logrus.ErrorLevel
-	default:
-		panic(errorz.Errorf("unknown level: %v", errorz.A(l), errorz.Skip()))
-	}
-}
-
-func (l Level) toSentry() sentry.Level {
-	switch l {
-	case Debug:
-		return sentry.LevelDebug
-	case Info:
-		return sentry.LevelInfo
-	case Warning:
-		return sentry.LevelWarning
-	case Error:
-		return sentry.LevelError
-	default:
-		panic(errorz.Errorf("unknown level: %v", errorz.A(l), errorz.Skip()))
-	}
-}
-
-func levelFromSentry(l sentry.Level) Level {
-	switch l {
-	case sentry.LevelFatal, sentry.LevelError:
-		return Error
-	case sentry.LevelWarning:
-		return Warning
-	case sentry.LevelInfo:
-		return Info
-	case sentry.LevelDebug:
-		return Debug
-	default:
-		panic(errorz.Errorf("unknown level: %v", errorz.A(l), errorz.Skip()))
-	}
-}
-
-// Known levels.
-const (
-	Debug   Level = "debug"
-	Info    Level = "info"
-	Warning Level = "warning"
-	Error   Level = "error"
+	noopLogs = &noopLogsImpl{}
 )
 
 // OutputFormat describes the format for output logs.
@@ -94,21 +40,27 @@ const (
 )
 
 // BeforeSendFunc describes a function called before sending out an event.
-type BeforeSendFunc func(event *sentry.Event, _ *sentry.EventHint) *sentry.Event
+type BeforeSendFunc func(event *sentry.Event, hint *sentry.EventHint) *sentry.Event
 
 // Config describes the configuration for Logs.
 type Config struct {
-	SentryLevel            Level          `json:"sentryLevel" validate:"required,oneof=debug info warning error"`
-	OutputLevel            Level          `json:"outputLevel" validate:"required,oneof=debug info warning error"`
-	OutputFormat           OutputFormat   `json:"format" validate:"required,oneof=text json"`
-	SentryDSN              string         `json:"sentryDsn"`
-	SentrySampleRate       float64        `json:"sentrySampleRate" validate:"required"`
-	SentryTracesSampleRate float64        `json:"sentryTracesSampleRate" validate:"required"`
-	ReleaseTimeout         time.Duration  `json:"releaseTimeout"`
-	Environment            string         `json:"environment"`
-	Release                string         `json:"release"`
-	ServerName             string         `json:"serverName"`
-	BeforeSend             BeforeSendFunc `json:"-"`
+	SentryLevel            Level            `json:"sentryLevel" validate:"required,oneof=debug info warning error"`
+	OutputLevel            Level            `json:"outputLevel" validate:"required,oneof=debug info warning error"`
+	OutputFormat           OutputFormat     `json:"format" validate:"required,oneof=text json"`
+	SentryDSN              string           `json:"sentryDsn"`
+	SentrySampleRate       float64          `json:"sentrySampleRate" validate:"required"`
+	SentryTracesSampleRate float64          `json:"sentryTracesSampleRate" validate:"required"`
+	SentryTransport        sentry.Transport `json:"-"`
+	ReleaseTimeoutSeconds  int              `json:"releaseTimeoutSeconds"`
+	Environment            string           `json:"environment"`
+	Release                string           `json:"release"`
+	ServerName             string           `json:"serverName"`
+	BeforeSend             BeforeSendFunc   `json:"-"`
+}
+
+// Validate implements the vz.Validator interface.
+func (c *Config) Validate() error {
+	return errorz.MaybeWrap(vz.ValidateStruct(c), errorz.Skip())
 }
 
 // NewConfigSingletonInjector always inject the given *Config.
@@ -138,25 +90,25 @@ type logsImpl struct {
 // Debug logs a debug message.
 func (l *logsImpl) Debug(ctx context.Context, skipCallers int, format string, options ...Option) {
 	sentry.GetHubFromContext(ctx).CaptureEvent(
-		newEntry(Debug, skipCallers+1, format, options...).toSentryEvent())
+		newEntry(ctx, Debug, skipCallers+1, format, options...).toSentryEvent())
 }
 
 // Info logs an info message.
 func (l *logsImpl) Info(ctx context.Context, skipCallers int, format string, options ...Option) {
 	sentry.GetHubFromContext(ctx).CaptureEvent(
-		newEntry(Info, skipCallers+1, format, options...).toSentryEvent())
+		newEntry(ctx, Info, skipCallers+1, format, options...).toSentryEvent())
 }
 
 // Warning logs a warning.
 func (l *logsImpl) Warning(ctx context.Context, err error) {
 	sentry.GetHubFromContext(ctx).CaptureEvent(
-		errorToSentryEvent(errorz.Wrap(err, errorz.Skip()), Warning))
+		errorToSentryEvent(ctx, errorz.Wrap(err, errorz.SkipPackage()), Warning))
 }
 
 // Error logs an error.
 func (l *logsImpl) Error(ctx context.Context, err error) {
 	sentry.GetHubFromContext(ctx).CaptureEvent(
-		errorToSentryEvent(errorz.Wrap(err, errorz.Skip()), Error))
+		errorToSentryEvent(ctx, errorz.Wrap(err, errorz.SkipPackage()), Error))
 }
 
 // TraceHTTPRequestServer starts tracing an inbound HTTP request.
@@ -167,6 +119,7 @@ func (l *logsImpl) TraceHTTPRequestServer(ctx context.Context, req *http.Request
 	span := sentry.StartSpan(ctx, "http.server",
 		sentry.TransactionName(fmt.Sprintf("%s %s", req.Method, req.URL.Path)),
 		sentry.ContinueFromRequest(req))
+	span.StartTime = clockz.Get(ctx).Now()
 	ctx = span.Context()
 
 	sentryHub.Scope().SetRequest(req)
@@ -174,19 +127,26 @@ func (l *logsImpl) TraceHTTPRequestServer(ctx context.Context, req *http.Request
 		sentryHub.Scope().SetRequestBody(reqBody)
 	}
 
-	return ctx, span.Finish
+	return ctx, func() {
+		span.EndTime = clockz.Get(ctx).Now()
+		span.Finish()
+	}
 }
 
 // TraceSpan starts tracing a span, for example an outgoing HTTP request or database query.
 func (l *logsImpl) TraceSpan(ctx context.Context, op, desc string) (context.Context, func()) {
 	span := sentry.StartSpan(ctx, op)
+	span.StartTime = clockz.Get(ctx).Now()
 	span.Data = make(map[string]interface{})
 	span.Description = desc
 
 	ctx = span.Context()
 	ctx = context.WithValue(ctx, logsSpanContextKey, span)
 
-	return ctx, span.Finish
+	return ctx, func() {
+		span.EndTime = clockz.Get(ctx).Now()
+		span.Finish()
+	}
 }
 
 // SetUser sets the user in the current scope.
@@ -209,6 +169,49 @@ func (l *logsImpl) AddMetadata(ctx context.Context, k string, v interface{}) {
 	}
 
 	sentry.GetHubFromContext(ctx).Scope().SetExtra(k, v)
+}
+
+type noopLogsImpl struct {
+}
+
+// Debug logs a debug message.
+func (l *noopLogsImpl) Debug(_ context.Context, _ int, _ string, _ ...Option) {
+	// nothing to do here
+}
+
+// Info logs an info message.
+func (l *noopLogsImpl) Info(_ context.Context, _ int, _ string, _ ...Option) {
+	// nothing to do here
+}
+
+// Warning logs a warning.
+func (l *noopLogsImpl) Warning(_ context.Context, _ error) {
+	// nothing to do here
+}
+
+// Error logs an error.
+func (l *noopLogsImpl) Error(_ context.Context, _ error) {
+	// nothing to do here
+}
+
+// TraceHTTPRequestServer starts tracing an inbound HTTP request.
+func (l *noopLogsImpl) TraceHTTPRequestServer(ctx context.Context, _ *http.Request, _ []byte) (context.Context, func()) {
+	return ctx, func() {}
+}
+
+// TraceSpan starts tracing a span, for example an outgoing HTTP request or database query.
+func (l *noopLogsImpl) TraceSpan(ctx context.Context, _, _ string) (context.Context, func()) {
+	return ctx, func() {}
+}
+
+// SetUser sets the user in the current scope.
+func (l *noopLogsImpl) SetUser(_ context.Context, _ *User) {
+	// nothing to do here
+}
+
+// AddMetadata adds the given metadata to the current scope.
+func (l *noopLogsImpl) AddMetadata(_ context.Context, _ string, _ interface{}) {
+	// nothing to do here
 }
 
 // ContextLogs describes a Logs with a cached context.
@@ -240,12 +243,12 @@ func (l *contextLogsImpl) Info(format string, options ...Option) {
 
 // Warning logs a warning.
 func (l *contextLogsImpl) Warning(err error) {
-	l.logs.Warning(l.ctx, errorz.Wrap(err, errorz.Skip()))
+	l.logs.Warning(l.ctx, errorz.Wrap(err, errorz.SkipPackage()))
 }
 
 // Error logs an error.
 func (l *contextLogsImpl) Error(err error) {
-	l.logs.Error(l.ctx, errorz.Wrap(err, errorz.Skip()))
+	l.logs.Error(l.ctx, errorz.Wrap(err, errorz.SkipPackage()))
 }
 
 // TraceHTTPRequestServer starts tracing an inbound HTTP request.
@@ -271,7 +274,7 @@ func (l *contextLogsImpl) AddMetadata(k string, v interface{}) {
 // Initializer is a Logs initializer which provides a default implementation using Logrus and Sentry.
 func Initializer(ctx context.Context) (injectz.Injector, injectz.Releaser) {
 	cfg := ctx.Value(logsConfigContextKey).(*Config)
-	errorz.MaybeMustWrap(validate.Struct(cfg), errorz.Skip())
+	errorz.MaybeMustWrap(cfg.Validate(), errorz.SkipPackage())
 
 	logrusLogger := logrus.New()
 	logrusLogger.SetLevel(cfg.OutputLevel.toLogrus())
@@ -293,6 +296,7 @@ func Initializer(ctx context.Context) (injectz.Injector, injectz.Releaser) {
 		ServerName:       cfg.ServerName,
 		Release:          cfg.Release,
 		Environment:      cfg.Environment,
+		Transport:        cfg.SentryTransport,
 		BeforeSend: func(event *sentry.Event, eventHint *sentry.EventHint) *sentry.Event {
 			if cfg.BeforeSend != nil {
 				event = cfg.BeforeSend(event, eventHint)
@@ -303,7 +307,7 @@ func Initializer(ctx context.Context) (injectz.Injector, injectz.Releaser) {
 				WithFields(event.Extra)
 
 			if event.User.ID != "" {
-				logrusEntry = logrusEntry.WithField("user-id", event.User.ID)
+				logrusEntry = logrusEntry.WithField("uid", event.User.ID)
 			}
 
 			message := event.Message
@@ -315,7 +319,7 @@ func Initializer(ctx context.Context) (injectz.Injector, injectz.Releaser) {
 			return event
 		},
 	})
-	errorz.MaybeMustWrap(err, errorz.Skip())
+	errorz.MaybeMustWrap(err, errorz.SkipPackage())
 	sentryHub := sentry.NewHub(client, sentry.NewScope())
 
 	return injectz.NewInjectors(
@@ -327,7 +331,7 @@ func Initializer(ctx context.Context) (injectz.Injector, injectz.Releaser) {
 				return sentry.SetHubOnContext(ctx, sentryHub)
 			}),
 		func() {
-			sentryHub.Flush(cfg.ReleaseTimeout)
+			sentryHub.Flush(time.Duration(cfg.ReleaseTimeoutSeconds) * time.Second)
 		}
 }
 
@@ -338,19 +342,11 @@ func NewSingletonInjector(l Logs) injectz.Injector {
 	}
 }
 
-// Get extracts the Logs from context and wraps it as ContextLogs, panics if not found.
+// Get extracts the Logs from context and wraps it as ContextLogs, returns a no-op Logs if not found.
 func Get(ctx context.Context) ContextLogs {
-	return &contextLogsImpl{
-		ctx:  ctx,
-		logs: ctx.Value(logsContextKey).(Logs),
-	}
-}
-
-// MaybeGet is like Get but returns nil if not found.
-func MaybeGet(ctx context.Context) ContextLogs {
 	logs, ok := ctx.Value(logsContextKey).(Logs)
 	if !ok {
-		return nil
+		logs = noopLogs
 	}
 
 	return &contextLogsImpl{

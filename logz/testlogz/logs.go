@@ -34,7 +34,7 @@ func (f *Helper) BeforeSuite(ctx context.Context, _ *testing.T) context.Context 
 		SentryDSN:              "",
 		SentrySampleRate:       1,
 		SentryTracesSampleRate: 1,
-		ReleaseTimeout:         1,
+		ReleaseTimeoutSeconds:  5,
 		Environment:            "test",
 		Release:                "test",
 		ServerName:             "test",

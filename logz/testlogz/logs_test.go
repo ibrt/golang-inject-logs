@@ -19,7 +19,7 @@ func TestHelpers(t *testing.T) {
 
 type Suite struct {
 	*fixturez.DefaultConfigMixin
-	Logz *testlogz.Helper
+	Logs *testlogz.Helper
 }
 
 func (s *Suite) TestHelper(ctx context.Context, t *testing.T) {
@@ -29,10 +29,10 @@ func (s *Suite) TestHelper(ctx context.Context, t *testing.T) {
 
 type MockSuite struct {
 	*fixturez.DefaultConfigMixin
-	Logz *testlogz.MockHelper
+	Logs *testlogz.MockHelper
 }
 
 func (s *MockSuite) TestMockHelper(ctx context.Context, t *testing.T) {
-	s.Logz.Mock.EXPECT().Debug(gomock.Any(), gomock.Eq(1), "message")
+	s.Logs.Mock.EXPECT().Debug(gomock.Any(), gomock.Eq(1), "message")
 	logz.Get(ctx).Debug("message")
 }

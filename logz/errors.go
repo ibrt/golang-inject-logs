@@ -1,12 +1,14 @@
 package logz
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"runtime"
 
 	"github.com/getsentry/sentry-go"
 	"github.com/ibrt/golang-errors/errorz"
+	"github.com/ibrt/golang-inject-clock/clockz"
 )
 
 const (
@@ -15,9 +17,10 @@ const (
 	unwrappedKey  = "unwrapped[%v][%v]"
 )
 
-func errorToSentryEvent(err error, level Level) *sentry.Event {
-	err = errorz.Wrap(err, errorz.Skip()) // ensure error is wrapped to start
+func errorToSentryEvent(ctx context.Context, err error, level Level) *sentry.Event {
+	err = errorz.Wrap(err, errorz.SkipPackage()) // ensure error is wrapped to start
 	event := sentry.NewEvent()
+	event.Timestamp = clockz.Get(ctx).Now()
 	event.Level = level.toSentry()
 
 	if status := errorz.GetStatus(err); status != 0 {

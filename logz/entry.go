@@ -1,10 +1,13 @@
 package logz
 
 import (
+	"context"
 	"fmt"
 	"runtime"
+	"time"
 
 	"github.com/getsentry/sentry-go"
+	"github.com/ibrt/golang-inject-clock/clockz"
 )
 
 var (
@@ -57,15 +60,17 @@ func M(k string, v interface{}) OptionFunc {
 }
 
 type entry struct {
-	level    Level
-	callers  []uintptr
-	message  string
-	metadata Metadata
+	level     Level
+	timestamp time.Time
+	callers   []uintptr
+	message   string
+	metadata  Metadata
 }
 
 func (e *entry) toSentryEvent() *sentry.Event {
 	event := sentry.NewEvent()
 	event.Level = sentry.Level(e.level)
+	event.Timestamp = e.timestamp
 	event.Message = e.message
 	event.Extra = e.metadata
 
@@ -78,7 +83,7 @@ func (e *entry) toSentryEvent() *sentry.Event {
 	return event
 }
 
-func newEntry(level Level, skipCallers int, format string, options ...Option) *entry {
+func newEntry(ctx context.Context, level Level, skipCallers int, format string, options ...Option) *entry {
 	callers := make([]uintptr, 1024)
 	callers = callers[:runtime.Callers(2+skipCallers, callers[:])]
 
@@ -90,10 +95,11 @@ func newEntry(level Level, skipCallers int, format string, options ...Option) *e
 	}
 
 	e := &entry{
-		level:    level,
-		callers:  callers,
-		message:  fmt.Sprintf(format, mergedArgs...),
-		metadata: Metadata{},
+		level:     level,
+		timestamp: clockz.Get(ctx).Now(),
+		callers:   callers,
+		message:   fmt.Sprintf(format, mergedArgs...),
+		metadata:  Metadata{},
 	}
 
 	for _, o := range options {

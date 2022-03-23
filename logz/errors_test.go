@@ -1,115 +1,196 @@
 package logz
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"testing"
 
 	"github.com/getsentry/sentry-go"
 	"github.com/ibrt/golang-errors/errorz"
+	"github.com/ibrt/golang-fixtures/fixturez"
+	"github.com/ibrt/golang-inject-clock/clockz"
+	"github.com/ibrt/golang-inject-clock/clockz/testclockz"
 	"github.com/stretchr/testify/require"
 )
 
-type testError struct {
+type TestError struct {
 	message string
 }
 
-func (e *testError) Error() string {
+func (e *TestError) Error() string {
 	return e.message
 }
 
-type testErrorWithCause struct {
-	message string
-	err     error
-}
-
-func (e *testErrorWithCause) Error() string {
-	return e.message
-}
-
-func (e *testErrorWithCause) Cause() error {
-	return e.err
-}
-
-type testErrorWithUnwrap struct {
+type TestErrorWithCause struct {
 	message string
 	err     error
 }
 
-func (e *testErrorWithUnwrap) Error() string {
+func (e *TestErrorWithCause) Error() string {
 	return e.message
 }
 
-func (e *testErrorWithUnwrap) Unwrap() error {
+func (e *TestErrorWithCause) Cause() error {
 	return e.err
 }
 
-func TestErrorToSentryEvent(t *testing.T) {
-	event := errorToSentryEvent(fmt.Errorf("test error"), Error)
-	require.Equal(t, sentry.LevelError, event.Level)
-	require.Empty(t, event.Extra)
-	require.Len(t, event.Exception, 1)
-	require.Equal(t, "*errors.errorString", event.Exception[0].Type)
-	require.Equal(t, "test error", event.Exception[0].Value)
-	require.Equal(t, "TestErrorToSentryEvent", event.Exception[0].Stacktrace.Frames[len(event.Exception[0].Stacktrace.Frames)-1].Function)
+type TestErrorWithUnwrap struct {
+	message string
+	err     error
+}
 
-	event = errorToSentryEvent(errorz.Errorf("test error"), Warning)
-	require.Equal(t, sentry.LevelWarning, event.Level)
-	require.Empty(t, event.Extra)
-	require.Len(t, event.Exception, 1)
-	require.Equal(t, "*errors.errorString", event.Exception[0].Type)
-	require.Equal(t, "test error", event.Exception[0].Value)
-	require.Equal(t, "TestErrorToSentryEvent", event.Exception[0].Stacktrace.Frames[len(event.Exception[0].Stacktrace.Frames)-1].Function)
+func (e *TestErrorWithUnwrap) Error() string {
+	return e.message
+}
 
-	event = errorToSentryEvent(errorz.Errorf("test error", errorz.ID("test-id"), errorz.Status(http.StatusBadRequest), errorz.M("k", "v")), Warning)
-	require.Equal(t, sentry.LevelWarning, event.Level)
-	require.Equal(t, map[string]interface{}{
-		"status": http.StatusBadRequest,
-		"k":      "v",
-	}, event.Extra)
-	require.Len(t, event.Exception, 1)
-	require.Equal(t, "test-id", event.Exception[0].Type)
-	require.Equal(t, "test error", event.Exception[0].Value)
-	require.Equal(t, "TestErrorToSentryEvent", event.Exception[0].Stacktrace.Frames[len(event.Exception[0].Stacktrace.Frames)-1].Function)
+func (e *TestErrorWithUnwrap) Unwrap() error {
+	return e.err
+}
 
-	tErr := &testError{message: "test error"}
-	event = errorToSentryEvent(errorz.Wrap(tErr), Warning)
-	require.Equal(t, sentry.LevelWarning, event.Level)
-	require.Equal(t, map[string]interface{}{"unwrapped[0][*logz.testError]": tErr}, event.Extra)
-	require.Len(t, event.Exception, 1)
-	require.Equal(t, "*logz.testError", event.Exception[0].Type)
-	require.Equal(t, "test error", event.Exception[0].Value)
-	require.Equal(t, "TestErrorToSentryEvent", event.Exception[0].Stacktrace.Frames[len(event.Exception[0].Stacktrace.Frames)-1].Function)
+type ErrorsSuite struct {
+	*fixturez.DefaultConfigMixin
+	Clock *testclockz.MockHelper
+}
 
-	tErr = &testError{message: "inner test error"}
-	tErrC := &testErrorWithCause{message: "outer test error", err: tErr}
-	event = errorToSentryEvent(errorz.Wrap(tErrC), Warning)
-	require.Equal(t, sentry.LevelWarning, event.Level)
-	require.Equal(t, map[string]interface{}{
-		"unwrapped[0][*logz.testErrorWithCause]": tErrC,
-		"unwrapped[1][*logz.testError]":          tErr,
-	}, event.Extra)
+func TestErrors(t *testing.T) {
+	fixturez.RunSuite(t, &ErrorsSuite{})
+}
+
+func (s *ErrorsSuite) TestErrorToSentryEvent(ctx context.Context, t *testing.T) {
+	event := errorToSentryEvent(ctx, fmt.Errorf("test error"), Error)
+	require.Len(t, event.Exception, 1)
+	require.NotNil(t, event.Exception[0].Stacktrace)
+	event.Exception[0].Stacktrace = nil
+	require.Equal(t, &sentry.Event{
+		Contexts:  make(map[string]interface{}),
+		Tags:      make(map[string]string),
+		Modules:   make(map[string]string),
+		Extra:     map[string]interface{}{},
+		Level:     sentry.LevelError,
+		Timestamp: clockz.Get(ctx).Now(),
+		Exception: []sentry.Exception{
+			{
+				Type:  "*errors.errorString",
+				Value: "test error",
+			},
+		},
+	}, event)
+
+	event = errorToSentryEvent(ctx, errorz.Errorf("test error"), Warning)
+	require.Len(t, event.Exception, 1)
+	require.NotNil(t, event.Exception[0].Stacktrace)
+	event.Exception[0].Stacktrace = nil
+	require.Equal(t, &sentry.Event{
+		Contexts:  make(map[string]interface{}),
+		Tags:      make(map[string]string),
+		Modules:   make(map[string]string),
+		Extra:     map[string]interface{}{},
+		Level:     sentry.LevelWarning,
+		Timestamp: clockz.Get(ctx).Now(),
+		Exception: []sentry.Exception{
+			{
+				Type:  "*errors.errorString",
+				Value: "test error",
+			},
+		},
+	}, event)
+
+	event = errorToSentryEvent(ctx, errorz.Errorf("test error", errorz.ID("test-id"), errorz.Status(http.StatusBadRequest), errorz.M("k", "v")), Warning)
+	require.Len(t, event.Exception, 1)
+	require.NotNil(t, event.Exception[0].Stacktrace)
+	event.Exception[0].Stacktrace = nil
+	require.Equal(t, &sentry.Event{
+		Contexts: make(map[string]interface{}),
+		Tags:     make(map[string]string),
+		Modules:  make(map[string]string),
+		Extra: map[string]interface{}{
+			"status": http.StatusBadRequest,
+			"k":      "v",
+		},
+		Level:     sentry.LevelWarning,
+		Timestamp: clockz.Get(ctx).Now(),
+		Exception: []sentry.Exception{
+			{
+				Type:  "test-id",
+				Value: "test error",
+			},
+		},
+	}, event)
+
+	tErr := &TestError{message: "test error"}
+	event = errorToSentryEvent(ctx, errorz.Wrap(tErr), Warning)
+	require.Len(t, event.Exception, 1)
+	require.NotNil(t, event.Exception[0].Stacktrace)
+	event.Exception[0].Stacktrace = nil
+	require.Equal(t, &sentry.Event{
+		Contexts:  make(map[string]interface{}),
+		Tags:      make(map[string]string),
+		Modules:   make(map[string]string),
+		Extra:     map[string]interface{}{"unwrapped[0][*logz.TestError]": tErr},
+		Level:     sentry.LevelWarning,
+		Timestamp: clockz.Get(ctx).Now(),
+		Exception: []sentry.Exception{
+			{
+				Type:  "*logz.TestError",
+				Value: "test error",
+			},
+		},
+	}, event)
+
+	tErr = &TestError{message: "inner test error"}
+	tErrC := &TestErrorWithCause{message: "outer test error", err: tErr}
+	event = errorToSentryEvent(ctx, errorz.Wrap(tErrC), Warning)
 	require.Len(t, event.Exception, 2)
-	require.Equal(t, "*logz.testErrorWithCause", event.Exception[0].Type)
-	require.Equal(t, "outer test error", event.Exception[0].Value)
-	require.Equal(t, "TestErrorToSentryEvent", event.Exception[0].Stacktrace.Frames[len(event.Exception[0].Stacktrace.Frames)-1].Function)
-	require.Equal(t, "*logz.testError", event.Exception[1].Type)
-	require.Equal(t, "inner test error", event.Exception[1].Value)
-	require.Nil(t, event.Exception[1].Stacktrace)
+	require.NotNil(t, event.Exception[0].Stacktrace)
+	event.Exception[0].Stacktrace = nil
+	require.Equal(t, &sentry.Event{
+		Contexts: make(map[string]interface{}),
+		Tags:     make(map[string]string),
+		Modules:  make(map[string]string),
+		Extra: map[string]interface{}{
+			"unwrapped[0][*logz.TestErrorWithCause]": tErrC,
+			"unwrapped[1][*logz.TestError]":          tErr,
+		},
+		Level:     sentry.LevelWarning,
+		Timestamp: clockz.Get(ctx).Now(),
+		Exception: []sentry.Exception{
+			{
+				Type:  "*logz.TestErrorWithCause",
+				Value: "outer test error",
+			},
+			{
+				Type:  "*logz.TestError",
+				Value: "inner test error",
+			},
+		},
+	}, event)
 
-	tErr = &testError{message: "inner test error"}
-	tErrU := &testErrorWithUnwrap{message: "outer test error", err: tErr}
-	event = errorToSentryEvent(errorz.Wrap(tErrU), Warning)
-	require.Equal(t, sentry.LevelWarning, event.Level)
-	require.Equal(t, map[string]interface{}{
-		"unwrapped[0][*logz.testErrorWithUnwrap]": tErrU,
-		"unwrapped[1][*logz.testError]":           tErr,
-	}, event.Extra)
+	tErr = &TestError{message: "inner test error"}
+	tErrU := &TestErrorWithUnwrap{message: "outer test error", err: tErr}
+	event = errorToSentryEvent(ctx, errorz.Wrap(tErrU), Warning)
 	require.Len(t, event.Exception, 2)
-	require.Equal(t, "*logz.testErrorWithUnwrap", event.Exception[0].Type)
-	require.Equal(t, "outer test error", event.Exception[0].Value)
-	require.Equal(t, "TestErrorToSentryEvent", event.Exception[0].Stacktrace.Frames[len(event.Exception[0].Stacktrace.Frames)-1].Function)
-	require.Equal(t, "*logz.testError", event.Exception[1].Type)
-	require.Equal(t, "inner test error", event.Exception[1].Value)
-	require.Nil(t, event.Exception[1].Stacktrace)
+	require.NotNil(t, event.Exception[0].Stacktrace)
+	event.Exception[0].Stacktrace = nil
+	require.Equal(t, &sentry.Event{
+		Contexts: make(map[string]interface{}),
+		Tags:     make(map[string]string),
+		Modules:  make(map[string]string),
+		Extra: map[string]interface{}{
+			"unwrapped[0][*logz.TestErrorWithUnwrap]": tErrU,
+			"unwrapped[1][*logz.TestError]":           tErr,
+		},
+		Level:     sentry.LevelWarning,
+		Timestamp: clockz.Get(ctx).Now(),
+		Exception: []sentry.Exception{
+			{
+				Type:  "*logz.TestErrorWithUnwrap",
+				Value: "outer test error",
+			},
+			{
+				Type:  "*logz.TestError",
+				Value: "inner test error",
+			},
+		},
+	}, event)
 }

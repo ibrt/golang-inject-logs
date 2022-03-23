@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/getsentry/sentry-go"
+	"github.com/ibrt/golang-fixtures/fixturez"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 )
@@ -23,15 +24,15 @@ func TestLevel(t *testing.T) {
 	require.Equal(t, Error, levelFromSentry(sentry.LevelError))
 	require.Equal(t, Error, levelFromSentry(sentry.LevelFatal))
 
-	require.PanicsWithError(t, "unknown level: unknown", func() {
+	fixturez.RequirePanicsWith(t, "unknown level: unknown", func() {
 		Level("unknown").toSentry()
 	})
 
-	require.PanicsWithError(t, "unknown level: unknown", func() {
+	fixturez.RequirePanicsWith(t, "unknown level: unknown", func() {
 		Level("unknown").toLogrus()
 	})
 
-	require.PanicsWithError(t, "unknown level: unknown", func() {
-		levelFromSentry(sentry.Level("unknown"))
+	fixturez.RequirePanicsWith(t, "unknown level: unknown", func() {
+		levelFromSentry("unknown")
 	})
 }
