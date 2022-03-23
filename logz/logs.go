@@ -296,28 +296,7 @@ func Initializer(ctx context.Context) (injectz.Injector, injectz.Releaser) {
 		ServerName:       cfg.ServerName,
 		Release:          cfg.Release,
 		Environment:      cfg.Environment,
-		Transport:        cfg.SentryTransport,
-		BeforeSend: func(event *sentry.Event, eventHint *sentry.EventHint) *sentry.Event {
-			if cfg.BeforeSend != nil {
-				event = cfg.BeforeSend(event, eventHint)
-			}
-
-			logrusEntry := logrusLogger.
-				WithTime(event.Timestamp).
-				WithFields(event.Extra)
-
-			if event.User.ID != "" {
-				logrusEntry = logrusEntry.WithField("uid", event.User.ID)
-			}
-
-			message := event.Message
-			if len(event.Exception) > 0 {
-				message = event.Exception[0].Value
-			}
-
-			logrusEntry.Log(levelFromSentry(event.Level).toLogrus(), message)
-			return event
-		},
+		Transport:        newLogsTransport(logrusLogger, cfg.SentryTransport),
 	})
 	errorz.MaybeMustWrap(err, errorz.SkipPackage())
 	sentryHub := sentry.NewHub(client, sentry.NewScope())
@@ -331,7 +310,7 @@ func Initializer(ctx context.Context) (injectz.Injector, injectz.Releaser) {
 				return sentry.SetHubOnContext(ctx, sentryHub)
 			}),
 		func() {
-			sentryHub.Flush(time.Duration(cfg.ReleaseTimeoutSeconds) * time.Second)
+			client.Flush(time.Duration(cfg.ReleaseTimeoutSeconds) * time.Second)
 		}
 }
 
