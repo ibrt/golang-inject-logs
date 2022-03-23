@@ -35,6 +35,8 @@ func (t *logsTransport) Configure(options sentry.ClientOptions) {
 
 // SendEvent implements the sentry.Transport interface.
 func (t *logsTransport) SendEvent(event *sentry.Event) {
+	event = traceBeforeSend(event)
+
 	logrusEntry := t.logrusLogger.
 		WithTime(event.Timestamp).
 		WithFields(event.Extra)

@@ -9,6 +9,7 @@ import (
 	http "net/http"
 	reflect "reflect"
 
+	sentry "github.com/getsentry/sentry-go"
 	gomock "github.com/golang/mock/gomock"
 	logz "github.com/ibrt/golang-inject-logs/logz"
 )
@@ -119,6 +120,21 @@ func (m *MockLogs) TraceHTTPRequestServer(ctx context.Context, req *http.Request
 func (mr *MockLogsMockRecorder) TraceHTTPRequestServer(ctx, req, reqBody interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TraceHTTPRequestServer", reflect.TypeOf((*MockLogs)(nil).TraceHTTPRequestServer), ctx, req, reqBody)
+}
+
+// TraceHTTPRequestServerSimple mocks base method.
+func (m *MockLogs) TraceHTTPRequestServerSimple(ctx context.Context, req *sentry.Request) (context.Context, func()) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "TraceHTTPRequestServerSimple", ctx, req)
+	ret0, _ := ret[0].(context.Context)
+	ret1, _ := ret[1].(func())
+	return ret0, ret1
+}
+
+// TraceHTTPRequestServerSimple indicates an expected call of TraceHTTPRequestServerSimple.
+func (mr *MockLogsMockRecorder) TraceHTTPRequestServerSimple(ctx, req interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TraceHTTPRequestServerSimple", reflect.TypeOf((*MockLogs)(nil).TraceHTTPRequestServerSimple), ctx, req)
 }
 
 // TraceSpan mocks base method.
@@ -254,6 +270,21 @@ func (m *MockContextLogs) TraceHTTPRequestServer(req *http.Request, reqBody []by
 func (mr *MockContextLogsMockRecorder) TraceHTTPRequestServer(req, reqBody interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TraceHTTPRequestServer", reflect.TypeOf((*MockContextLogs)(nil).TraceHTTPRequestServer), req, reqBody)
+}
+
+// TraceHTTPRequestServerSimple mocks base method.
+func (m *MockContextLogs) TraceHTTPRequestServerSimple(req *sentry.Request) (context.Context, func()) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "TraceHTTPRequestServerSimple", req)
+	ret0, _ := ret[0].(context.Context)
+	ret1, _ := ret[1].(func())
+	return ret0, ret1
+}
+
+// TraceHTTPRequestServerSimple indicates an expected call of TraceHTTPRequestServerSimple.
+func (mr *MockContextLogsMockRecorder) TraceHTTPRequestServerSimple(req interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TraceHTTPRequestServerSimple", reflect.TypeOf((*MockContextLogs)(nil).TraceHTTPRequestServerSimple), req)
 }
 
 // TraceSpan mocks base method.

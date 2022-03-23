@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/getsentry/sentry-go"
@@ -76,6 +77,7 @@ type Logs interface {
 	Warning(ctx context.Context, err error)
 	Error(ctx context.Context, err error)
 	TraceHTTPRequestServer(ctx context.Context, req *http.Request, reqBody []byte) (context.Context, func())
+	TraceHTTPRequestServerSimple(ctx context.Context, req *sentry.Request) (context.Context, func())
 	TraceSpan(ctx context.Context, op, desc string) (context.Context, func())
 	SetUser(ctx context.Context, user *User)
 	AddMetadata(ctx context.Context, k string, v interface{})
@@ -118,13 +120,41 @@ func (l *logsImpl) TraceHTTPRequestServer(ctx context.Context, req *http.Request
 	span := sentry.StartSpan(ctx, "http.server",
 		sentry.TransactionName(fmt.Sprintf("%s %s", req.Method, req.URL.Path)),
 		sentry.ContinueFromRequest(req))
+
 	span.StartTime = clockz.Get(ctx).Now()
 	ctx = span.Context()
 
 	sentryHub.Scope().SetRequest(req)
-	if len(reqBody) > 0 {
+	if reqBody != nil {
 		sentryHub.Scope().SetRequestBody(reqBody)
 	}
+
+	return ctx, func() {
+		span.EndTime = clockz.Get(ctx).Now()
+		span.Finish()
+	}
+}
+
+// TraceHTTPRequestServerSimple starts tracing an inbound HTTP request, accepts a *sentry.Request instead of *http.Request.
+func (l *logsImpl) TraceHTTPRequestServerSimple(ctx context.Context, req *sentry.Request) (context.Context, func()) {
+	sentryHub := sentry.GetHubFromContext(ctx).Clone()
+	ctx = sentry.SetHubOnContext(ctx, sentryHub)
+
+	transactionName := "<unknown>"
+	if req.Method != "" && req.URL != "" {
+		if u, err := url.Parse(req.URL); err == nil {
+			transactionName = fmt.Sprintf("%v %v", req.Method, u.Path)
+		}
+	}
+
+	span := sentry.StartSpan(ctx, "http.server",
+		sentry.TransactionName(transactionName),
+		newTraceSpanOption(req.Headers))
+
+	span.StartTime = clockz.Get(ctx).Now()
+	ctx = span.Context()
+
+	sentryHub.Scope().SetExtra(logsRequestExtraKey, req)
 
 	return ctx, func() {
 		span.EndTime = clockz.Get(ctx).Now()
@@ -198,6 +228,11 @@ func (l *noopLogsImpl) TraceHTTPRequestServer(ctx context.Context, _ *http.Reque
 	return ctx, func() {}
 }
 
+// TraceHTTPRequestServerSimple starts tracing an inbound HTTP request, accepts a *sentry.Request instead of *http.Request.
+func (l *noopLogsImpl) TraceHTTPRequestServerSimple(ctx context.Context, req *sentry.Request) (context.Context, func()) {
+	return ctx, func() {}
+}
+
 // TraceSpan starts tracing a span, for example an outgoing HTTP request or database query.
 func (l *noopLogsImpl) TraceSpan(ctx context.Context, _, _ string) (context.Context, func()) {
 	return ctx, func() {}
@@ -220,6 +255,7 @@ type ContextLogs interface {
 	Warning(err error)
 	Error(err error)
 	TraceHTTPRequestServer(req *http.Request, reqBody []byte) (context.Context, func())
+	TraceHTTPRequestServerSimple(req *sentry.Request) (context.Context, func())
 	TraceSpan(op, desc string) (context.Context, func())
 	SetUser(user *User)
 	AddMetadata(k string, v interface{})
@@ -253,6 +289,11 @@ func (l *contextLogsImpl) Error(err error) {
 // TraceHTTPRequestServer starts tracing an inbound HTTP request.
 func (l *contextLogsImpl) TraceHTTPRequestServer(req *http.Request, reqBody []byte) (context.Context, func()) {
 	return l.logs.TraceHTTPRequestServer(l.ctx, req, reqBody)
+}
+
+// TraceHTTPRequestServerSimple starts tracing an inbound HTTP request, accepts a *sentry.Request instead of *http.Request.
+func (l *contextLogsImpl) TraceHTTPRequestServerSimple(req *sentry.Request) (context.Context, func()) {
+	return l.logs.TraceHTTPRequestServerSimple(l.ctx, req)
 }
 
 // TraceSpan starts tracing a span, for example an outgoing HTTP request or database query.

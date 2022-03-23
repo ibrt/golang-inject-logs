@@ -305,8 +305,6 @@ func (s *ModuleSuite) TestError(ctx context.Context, t *testing.T) {
 }
 
 func (s *ModuleSuite) TestTracing(ctx context.Context, t *testing.T) {
-	//c := fixturez.CaptureOutput()
-	//defer c.Close()
 	ctx, releaser, transport := setupLogs(ctx)
 	defer releaser()
 	startTime := clockz.Get(ctx).Now()
@@ -389,6 +387,103 @@ func (s *ModuleSuite) TestTracing(ctx context.Context, t *testing.T) {
 	}, event)
 }
 
+func (s *ModuleSuite) TestTracingSimple(ctx context.Context, t *testing.T) {
+	ctx, releaser, transport := setupLogs(ctx)
+	defer releaser()
+	startTime := clockz.Get(ctx).Now()
+
+	func() {
+		testReq := &sentry.Request{
+			Method: "GET",
+			URL:    "http://example.com/path",
+			Headers: map[string]string{
+				"Host":         "example.com",
+				"sentry-trace": "0123456789abcdef0123456789abcdef-0123456789abcdef-1",
+			},
+			Env: map[string]string{
+				"REMOTE_ADDR": "1.2.3.4",
+				"REMOTE_PORT": "4321",
+			},
+			Data: "body",
+		}
+
+		ctx, releaseTransaction := logz.Get(ctx).TraceHTTPRequestServerSimple(testReq)
+		defer releaseTransaction()
+
+		logz.Get(ctx).SetUser(&logz.User{
+			ID: "user-id",
+			Metadata: logz.Metadata{
+				"ku": "vu",
+			},
+		})
+
+		logz.Get(ctx).AddMetadata("kt", "vt")
+		s.Clock.Mock.Add(time.Second)
+
+		ctx, releaseSpan := logz.Get(ctx).TraceSpan("test", "Test Span.")
+		defer releaseSpan()
+
+		logz.Get(ctx).AddMetadata("ks", "vs")
+		s.Clock.Mock.Add(time.Second)
+	}()
+
+	require.Len(t, transport.events, 1)
+	event := transport.events[0]
+
+	require.NotEmpty(t, event.Contexts)
+	event.Contexts = nil
+
+	require.NotEmpty(t, event.EventID)
+	event.EventID = ""
+
+	require.NotEmpty(t, event.Sdk)
+	event.Sdk = sentry.SdkInfo{}
+
+	require.Len(t, event.Spans, 1)
+	span := event.Spans[0]
+	require.Equal(t, "0123456789abcdef0123456789abcdef", span.TraceID.String())
+	require.NotEmpty(t, span.SpanID)
+	require.NotEmpty(t, "0123456789abcdef", span.ParentSpanID.String())
+	require.True(t, span.Sampled.Bool())
+	require.Equal(t, startTime.Add(time.Second), span.StartTime)
+	require.Equal(t, startTime.Add(2*time.Second), span.EndTime)
+	require.Equal(t, "test", span.Op)
+	require.Equal(t, "Test Span.", span.Description)
+	require.Equal(t, map[string]interface{}{"ks": "vs"}, span.Data)
+	event.Spans = nil
+
+	require.Equal(t, &sentry.Event{
+		Environment: "environment",
+		Release:     "release",
+		ServerName:  "serverName",
+		Type:        "transaction",
+		StartTime:   startTime,
+		Timestamp:   startTime.Add(2 * time.Second),
+		Transaction: "GET /path",
+		Platform:    "go",
+		Extra:       map[string]interface{}{"ku": "vu", "kt": "vt"},
+		Level:       sentry.LevelInfo,
+		Request: &sentry.Request{
+			URL:         "http://example.com/path",
+			Method:      "GET",
+			Data:        "body",
+			QueryString: "",
+			Cookies:     "",
+			Headers: map[string]string{
+				"Host":         "example.com",
+				"sentry-trace": "0123456789abcdef0123456789abcdef-0123456789abcdef-1",
+			},
+			Env: map[string]string{
+				"REMOTE_ADDR": "1.2.3.4",
+				"REMOTE_PORT": "4321",
+			},
+		},
+		User: sentry.User{
+			ID: "user-id",
+		},
+	}, event)
+}
+
 func (s *ModuleSuite) TestNoopLogs(_ context.Context, t *testing.T) {
 	c := fixturez.CaptureOutput()
 	defer c.Close()
@@ -402,6 +497,8 @@ func (s *ModuleSuite) TestNoopLogs(_ context.Context, t *testing.T) {
 		_, releaser := noopLogs.TraceHTTPRequestServer(nil, nil)
 		releaser()
 		_, releaser = noopLogs.TraceSpan("op", "desc")
+		releaser()
+		_, releaser = noopLogs.TraceHTTPRequestServerSimple(nil)
 		releaser()
 		noopLogs.SetUser(nil)
 		noopLogs.AddMetadata("k", "v")
@@ -438,94 +535,3 @@ func (s *ModuleSuite) TestTextOutput(ctx context.Context, t *testing.T) {
 	require.Contains(t, out, "DEBU")
 	require.Contains(t, out, "message: value")
 }
-
-/*
-
-
-func TestModule_Tracing(t *testing.T) {
-	c := fixturez.CaptureOutput()
-	defer c.Close()
-
-	var recEvent *sentry.Event
-
-	ctx := getCfg(func(event *sentry.Event, _ *sentry.EventHint) *sentry.Event {
-		recEvent = event
-		return event
-	})
-
-	injector, releaser := logz.Initializer(ctx)
-	defer releaser()
-	ctx = injector(ctx)
-
-	testReq := httptest.NewRequest("GET", "/path", nil)
-	ctx, releaseTransaction := logz.Get(ctx).TraceHTTPRequestServer(testReq, []byte(`body`))
-
-	logz.Get(ctx).SetUser(&logz.User{
-		ID: "some-user-id",
-		Metadata: logz.Metadata{
-			"ku": "vu",
-		},
-	})
-
-	logz.Get(ctx).AddMetadata("k2", "v2")
-
-	ctx, releaseSpan := logz.Get(ctx).TraceSpan("test", "Test Span.")
-
-	logz.Get(ctx).AddMetadata("sk1", "sv1")
-	logz.Get(ctx).Error(errorz.Errorf("message: %v", errorz.A("value"), errorz.M("k1", "v1")))
-
-	releaseSpan()
-	releaseTransaction()
-
-	v := make(map[string]interface{})
-	fixturez.RequireNoError(t, json.Unmarshal(c.GetErr(), &v))
-	require.Equal(t, "some-user-id", v["user-id"])
-	require.Equal(t, "v1", v["k1"])
-	require.Equal(t, "v2", v["k2"])
-	require.Equal(t, "vu", v["ku"])
-	require.Equal(t, "error", v["level"])
-	require.Equal(t, "message: value", v["msg"])
-	require.NotNil(t, v["time"])
-
-	require.NotNil(t, recEvent)
-	require.Equal(t, sentry.LevelError, recEvent.Level)
-	require.Equal(t, map[string]interface{}{"k1": "v1", "k2": "v2", "ku": "vu"}, recEvent.Extra)
-	require.Equal(t, "some-user-id", recEvent.User.ID)
-	require.Len(t, recEvent.Exception, 1)
-	require.Equal(t, "*errors.errorString", recEvent.Exception[0].Type)
-	require.Equal(t, "message: value", recEvent.Exception[0].Value)
-	require.Equal(t, "TestModule_Tracing", recEvent.Exception[0].Stacktrace.Frames[len(recEvent.Exception[0].Stacktrace.Frames)-1].Function)
-}
-
-func TestModule_Text(t *testing.T) {
-	c := fixturez.CaptureOutput()
-	defer c.Close()
-
-	cfg := &logz.Config{
-		SentryLevel:            logz.Debug,
-		OutputLevel:            logz.Debug,
-		OutputFormat:           logz.Text,
-		SentryDSN:              "",
-		SentrySampleRate:       1,
-		SentryTracesSampleRate: 1,
-		ReleaseTimeoutSeconds:  5,
-		Environment:            "environment",
-		Release:                "release",
-		ServerName:             "serverName",
-	}
-
-	ctx := logz.NewConfigSingletonInjector(cfg)(context.Background())
-	injector, releaser := logz.Initializer(ctx)
-	defer releaser()
-
-	logs := logz.Get(injector(ctx))
-	require.NotNil(t, logs)
-
-	logs.Debug("message: %v", logz.A("value"), logz.M("k", "v"))
-	out := string(c.GetErr())
-	require.Contains(t, out, "DEBU")
-	require.Contains(t, out, "message: value")
-}
-
-
-}*/
